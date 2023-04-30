@@ -61,10 +61,6 @@ void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams
 	CONTEXT ThreadContext;
 	ThreadContext.ContextFlags = CONTEXT_CONTROL;
 
-	// TO DO: Shellcode get's executed fine, but since the thread can not return to it's original function the program crashes after
-	// shellcode is executed. That wouldn't be a problem if we were just trying to insert some malicious code in the victim's computer
-	// but it is right now since the process must continue on.
-
 	if (SuspendThread(hThread) == HandleToULong(INVALID_HANDLE_VALUE))
 	{
 		printf("SuspendThread failed, err: 0x%X\n", GetLastError());
