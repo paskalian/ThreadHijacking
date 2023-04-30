@@ -1,5 +1,5 @@
 # ThreadHijacking
-Basic attempt to thread hijack from a target process and run shellcode with it.
+This process attempts to thread hijack from a target process and run shellcode with it.
 
 ## Information
 **Made for educational purposes only.**<br>
