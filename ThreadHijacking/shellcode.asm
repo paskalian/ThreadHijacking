@@ -27,10 +27,18 @@ Shellcode PROC
     ; SAVING THE REGISTERS
 
     mov rax, 0CCCCCCCCCCCCCCCCh
+    sub rsp, 8
+    mov qword ptr[rsp], rax
     xor rcx, rcx
     lea rdx, qword ptr[rax + 8h]
     lea r8, qword ptr[rax + 1Ch]
+    xor r9, r9
+    push r9
     call qword ptr[rax]
+    pop r9
+    mov rax, qword ptr[rsp]
+    mov qword ptr[rax], 0h
+    add rsp, 8
     
     ; RESTORING THE REGISTERS
     pop r15
