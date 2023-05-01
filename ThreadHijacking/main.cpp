@@ -132,8 +132,6 @@ void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams
 
 int main(int argc, char* argv[])
 {
-	getchar();
-
 	// Checking for arguments.
 	if (argc != 2)
 	{
@@ -218,8 +216,6 @@ int main(int argc, char* argv[])
 		}
 		printf("[*] shellcode variables written into the allocated memory.\n");
 		
-		getchar();
-
 		HijackThread(Pid, (UINT_PTR)ShellcodeMemory, (UINT_PTR)ShellcodeMemory + sizeof(ShellcodeBytes));
 
 		printf("[*] shellcode function finished.\n");
