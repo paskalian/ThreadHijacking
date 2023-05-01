@@ -27,7 +27,7 @@ Shellcode PROC
     ; SAVING THE REGISTERS
 
     mov rax, 0CCCCCCCCCCCCCCCCh
-    sub rsp, 8
+    sub rsp, 08h
     mov qword ptr[rsp], rax
     xor rcx, rcx
     lea rdx, qword ptr[rax + 8h]
@@ -38,7 +38,7 @@ Shellcode PROC
     add rsp, 08h
     mov rax, qword ptr[rsp]
     mov qword ptr[rax], 0h
-    add rsp, 8
+    add rsp, 08h
     
     ; RESTORING THE REGISTERS
     pop r15
