@@ -51,7 +51,7 @@ void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams
 
 	CloseHandle(hSnapshot);
 
-	HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, ThreadEntry.th32ThreadID);
+	HANDLE hThread = OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME, FALSE, ThreadEntry.th32ThreadID);
 	if (!hThread)
 	{
 		printf("OpenThread failed, err: 0x%X\n", GetLastError());
