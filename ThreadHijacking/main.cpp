@@ -17,8 +17,8 @@ HANDLE g_hProcess = NULL;
 static const BYTE ShellcodeBytes[] =
 "\x48\x83\xEC\x08\xC7\x04\x24\xCC\xCC\xCC\xCC\xC7\x44\x24\x04\xCC\xCC\xCC\xCC\x9C\x50\x51\x52\x53\x55\x56\x57\x41\x50\x41\x51\x41\x52"
 "\x41\x53\x41\x54\x41\x55\x41\x56\x41\x57\x48\xB8\xCC\xCC\xCC\xCC\xCC\xCC\xCC\xCC\x48\x83\xEC\x08\x48\x89\x04\x24\x48\x33\xC9\x48\x8D"
-"\x50\x08\x4C\x8D\x40\x1C\x4D\x33\xC9\x41\x51\xFF\x10\x41\x59\x48\x8B\x04\x24\x48\xC7\x00\x00\x00\x00\x00\x48\x83\xC4\x08\x41\x5F\x41"
-"\x5E\x41\x5D\x41\x5C\x41\x5B\x41\x5A\x41\x59\x41\x58\x5F\x5E\x5D\x5B\x5A\x59\x58\x9D\xC3";
+"\x50\x08\x4C\x8D\x40\x1C\x4D\x33\xC9\x48\x83\xEC\x08\xFF\x10\x48\x83\xC4\x08\x48\x8B\x04\x24\x48\xC7\x00\x00\x00\x00\x00\x48\x83\xC4"
+"\x08\x41\x5F\x41\x5E\x41\x5D\x41\x5C\x41\x5B\x41\x5A\x41\x59\x41\x58\x5F\x5E\x5D\x5B\x5A\x59\x58\x9D\xC3";
 #endif
 
 using fMessageBoxA = int(WINAPI*)(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType);
@@ -32,11 +32,13 @@ struct SC_PARAM
 
 void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams)
 {
+	// Getting a snapshot of the threads running on the system.
 	HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
 
 	THREADENTRY32 ThreadEntry = {};
 	ThreadEntry.dwSize = sizeof(THREADENTRY32);
 
+	// Iterating through the threads until we find a thread from the target process.
 	Thread32First(hSnapshot, &ThreadEntry);
 	while (ThreadEntry.th32OwnerProcessID != Pid)
 	{
@@ -51,6 +53,7 @@ void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams
 
 	CloseHandle(hSnapshot);
 
+	// Getting a handle to the found thread.
 	HANDLE hThread = OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME, FALSE, ThreadEntry.th32ThreadID);
 	if (!hThread)
 	{
@@ -58,9 +61,12 @@ void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams
 		return;
 	}
 
+	// Setting up a CONTEXT structure to be used while getting the thread context, CONTEXT_CONTROL meaning
+	// we will only work on RIP, etc.
 	CONTEXT ThreadContext;
 	ThreadContext.ContextFlags = CONTEXT_CONTROL;
 
+	// Suspending the thread because if we change the thread context while it's running it can result in undefined behaviour.
 	if (SuspendThread(hThread) == HandleToULong(INVALID_HANDLE_VALUE))
 	{
 		printf("SuspendThread failed, err: 0x%X\n", GetLastError());
@@ -68,20 +74,31 @@ void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams
 		return;
 	}
 	
-	
+	// Getting the thread context.
 	if (GetThreadContext(hThread, &ThreadContext))
 	{
+		// Saving the RIP since we are gonna return the thread after the shellcode is executed.
 		UINT_PTR JmpBackAddr = ThreadContext.Rip;
 
 		DWORD LoJmpBk = LODWORD(JmpBackAddr);
 		DWORD HiJmpBk = HIDWORD(JmpBackAddr);
 
+		// Writing the JmpBackAddr into the
+		// mov dword ptr [rsp], 0CCCCCCCCh
+		// mov dword ptr[rsp + 4], 0CCCCCCCCh
+		// corresponding bytes ( CC ) and then when the shellcode is executed, it will get itself some stack space and write the
+		// return address in there, when ret is called after all it pops the stack and returns to what was on top of
+		// the stack which is that address.
 		WriteProcessMemory(g_hProcess, (LPVOID)(ShellcodeAddress + 7), &LoJmpBk, sizeof(DWORD), NULL);
 		WriteProcessMemory(g_hProcess, (LPVOID)(ShellcodeAddress + 15), &HiJmpBk, sizeof(DWORD), NULL);
 
+		// Writing the ShellcodeParams into the
+		// mov rax, 0CCCCCCCCCCCCCCCCh
+		// corresponding bytes ( CC ) which gets moved into rax and the shellcode uses rax as the base for the parameters.
 		DWORD64 Buffer64 = ShellcodeParams;
 		WriteProcessMemory(g_hProcess, (LPVOID)(ShellcodeAddress + 45), &Buffer64, sizeof(DWORD64), NULL);
 
+		// Updating the RIP to ShellcodeAddress
 #ifdef _WIN64
 		ThreadContext.Rip = (DWORD64)ShellcodeAddress;
 #else
@@ -89,27 +106,34 @@ void HijackThread(DWORD Pid, UINT_PTR ShellcodeAddress, UINT_PTR ShellcodeParams
 		ThreadContext.Ecx = ShellcodeAddress;
 #endif
 
+		// Setting the updated thread context.
 		if (!SetThreadContext(hThread, &ThreadContext))
 			printf("SetThreadContext failed, err: 0x%X\n", GetLastError());
 	}
 	else
 		printf("GetThreadContext failed, err: 0x%X\n", GetLastError());
 
+	// Resuming the thread with the updated RIP making the shellcode get executed IF the thread was already in a execute state when it was suspended,
+	// if not, the thread will stay in it's suspend state.
 	if (ResumeThread(hThread) == HandleToULong(INVALID_HANDLE_VALUE))
 	{
 		printf("ResumeThread failed, err: 0x%X\n", GetLastError());
 		return;
 	}
 
+	// The shellcode updates the first param to 0 if it's done, so we stay in a loop until it's 0.
 	UINT_PTR ThreadFinish = 0;
 	while (ReadProcessMemory(g_hProcess, (LPVOID)(ShellcodeParams), &ThreadFinish, sizeof(UINT_PTR), NULL), ThreadFinish)
 		;
 
+	// Finally closing the thread handle.
 	CloseHandle(hThread);
 }
 
 int main(int argc, char* argv[])
 {
+	getchar();
+
 	// Checking for arguments.
 	if (argc != 2)
 	{
@@ -194,6 +218,8 @@ int main(int argc, char* argv[])
 		}
 		printf("[*] shellcode variables written into the allocated memory.\n");
 		
+		getchar();
+
 		HijackThread(Pid, (UINT_PTR)ShellcodeMemory, (UINT_PTR)ShellcodeMemory + sizeof(ShellcodeBytes));
 
 		printf("[*] shellcode function finished.\n");
