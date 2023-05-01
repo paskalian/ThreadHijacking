@@ -1,5 +1,5 @@
 # ThreadHijacking
-This process attempts to thread hijack from a target process and run shellcode with it which pops a MessageBox.
+This process attempts to thread hijack from a target process and run shellcode with it which pops a MessageBox without crashing the process afterwards.
 
 ## Information
 **Made for educational purposes only.**<br>
