@@ -33,9 +33,9 @@ Shellcode PROC
     lea rdx, qword ptr[rax + 8h]
     lea r8, qword ptr[rax + 1Ch]
     xor r9, r9
-    sub rsp, 08h
+    sub rsp, 28h
     call qword ptr[rax]
-    add rsp, 08h
+    add rsp, 28h
     mov rax, qword ptr[rsp]
     mov qword ptr[rax], 0h
     add rsp, 08h
